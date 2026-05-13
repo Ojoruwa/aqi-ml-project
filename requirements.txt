@@ -4,5 +4,8 @@ plotly
 joblib
 scikit-learn
 numpy
-tensorflow
-twilio
+requests
+pydeck
+fastapi
+uvicorn
+python-dotenv
