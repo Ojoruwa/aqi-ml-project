@@ -1,59 +1,77 @@
-import os
 import requests
-from dotenv import load_dotenv
+import time
 
-load_dotenv()
-
-API_KEY = os.getenv("OPENWEATHER_API_KEY")
+API_KEY = "YOUR_API_KEY"
 
 WEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
 AIR_URL = "https://api.openweathermap.org/data/2.5/air_pollution"
 
+# ---------------- SIMPLE CACHE ----------------
+_cache = {}
+CACHE_TTL = 60  # seconds
+
 
 def get_live_data(city):
 
-    weather_params = {
-        "q": city,
-        "appid": API_KEY,
-        "units": "metric"
-    }
+    now = time.time()
 
-    w = requests.get(WEATHER_URL, params=weather_params)
+    # ---------- RETURN FROM CACHE ----------
+    if city in _cache:
+        cached_time, cached_data = _cache[city]
+        if now - cached_time < CACHE_TTL:
+            return cached_data
 
-    if w.status_code != 200:
-        return {"error": w.text}
+    try:
+        # ---------------- WEATHER ----------------
+        weather_params = {
+            "q": city,
+            "appid": API_KEY,
+            "units": "metric"
+        }
 
-    w = w.json()
+        weather = requests.get(
+            WEATHER_URL,
+            params=weather_params,
+            timeout=6
+        ).json()
 
-    lat = w["coord"]["lat"]
-    lon = w["coord"]["lon"]
+        if "coord" not in weather:
+            return {"error": "Invalid weather response"}
 
-    air_params = {
-        "lat": lat,
-        "lon": lon,
-        "appid": API_KEY
-    }
+        lat = weather["coord"]["lat"]
+        lon = weather["coord"]["lon"]
 
-    a = requests.get(AIR_URL, params=air_params)
+        # ---------------- AIR POLLUTION ----------------
+        air_params = {
+            "lat": lat,
+            "lon": lon,
+            "appid": API_KEY
+        }
 
-    if a.status_code != 200:
-        return {"error": a.text}
+        air = requests.get(
+            AIR_URL,
+            params=air_params,
+            timeout=6
+        ).json()
 
-    a = a.json()["list"][0]["components"]
+        result = {
+            "city": city,
+            "lat": lat,
+            "lon": lon,
+            "temp": weather["main"]["temp"],
+            "humidity": weather["main"]["humidity"],
+            "pm2_5": air["list"][0]["components"]["pm2_5"],
+            "pm10": air["list"][0]["components"]["pm10"],
+            "no2": air["list"][0]["components"]["no2"]
+        }
 
-    return {
-        "city": w["name"],
-        "temp": w["main"]["temp"],
-        "humidity": w["main"]["humidity"],
-        "pressure": w["main"]["pressure"],
-        "wind": w["wind"]["speed"],
-        "weather": w["weather"][0]["description"],
+        # SAVE TO CACHE
+        _cache[city] = (now, result)
 
-        "pm2_5": a.get("pm2_5", 0),
-        "pm10": a.get("pm10", 0),
-        "co": a.get("co", 0),
-        "no2": a.get("no2", 0),
-        "o3": a.get("o3", 0),
-        "so2": a.get("so2", 0),
-        "nh3": a.get("nh3", 0)
-    }
+        return result
+
+    except requests.exceptions.Timeout:
+        return {"error": "API timeout — try again"}
+
+    except Exception as e:
+        return {"error": str(e)}
