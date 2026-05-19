@@ -2,5 +2,7 @@
 .env
 venv/
 __pycache__/
+# Ignore all pickle files EXCEPT production model
 *.pkl
+!models/aqi_model.pkl
 *.pyc
