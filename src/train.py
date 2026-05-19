@@ -1,52 +1,131 @@
-import os
 import pandas as pd
 import joblib
+import os
 
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
-from xgboost import XGBRegressor
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-
-DATA_PATH = os.path.join(BASE_DIR, "data", "cleaned", "aqi_data.csv")
-MODEL_PATH = os.path.join(BASE_DIR, "models", "aqi_model.pkl")
+# -----------------------------
+# LOAD DATA
+# -----------------------------
+DATA_PATH = "data/cleaned/cleaned_aqi.csv"
 
 df = pd.read_csv(DATA_PATH)
 
+print("\nDataset Loaded Successfully")
+print(df.head())
+
+# -----------------------------
+# FEATURES
+# -----------------------------
 features = [
-    "temp", "humidity", "wind", "pressure",
-    "pm2_5", "pm10", "co", "no2", "o3", "so2", "nh3"
+    "pm10",
+    "co",
+    "no2",
+    "so2",
+    "o3",
+    "temp",
+    "humidity",
+    "pressure",
+    "wind_speed"
 ]
 
-target = "aqi"
+# -----------------------------
+# SCIENTIFIC AQI TARGET
+# -----------------------------
+def classify_aqi(pm25):
 
+    if pm25 <= 12:
+        return 0  # Good
+
+    elif pm25 <= 35.4:
+        return 1  # Moderate
+
+    elif pm25 <= 55.4:
+        return 2  # Unhealthy Sensitive
+
+    elif pm25 <= 150.4:
+        return 3  # Unhealthy
+
+    else:
+        return 4  # Hazardous
+
+# -----------------------------
+# CREATE TARGET
+# -----------------------------
+df["AQI_Risk"] = df["pm2_5"].apply(classify_aqi)
+
+print("\nAQI Distribution:")
+print(df["AQI_Risk"].value_counts())
+
+# -----------------------------
+# INPUT / TARGET
+# -----------------------------
 X = df[features]
-y = df[target]
+y = df["AQI_Risk"]
 
+# -----------------------------
+# SPLIT
+# -----------------------------
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
 )
 
-model = XGBRegressor(
-    n_estimators=400,
-    learning_rate=0.05,
-    max_depth=6,
-    subsample=0.8,
-    colsample_bytree=0.8,
+# -----------------------------
+# SCALE
+# -----------------------------
+scaler = StandardScaler()
+
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# -----------------------------
+# MODEL
+# -----------------------------
+model = RandomForestClassifier(
+    n_estimators=150,
+    max_depth=12,
+    class_weight="balanced",
     random_state=42
 )
 
+# -----------------------------
+# TRAIN
+# -----------------------------
+print("\nTraining AQI Model...")
+
 model.fit(X_train, y_train)
 
+# -----------------------------
+# EVALUATE
+# -----------------------------
 preds = model.predict(X_test)
 
-mae = mean_absolute_error(y_test, preds)
-r2 = r2_score(y_test, preds)
+print("\nClassification Report:")
+print(classification_report(y_test, preds))
 
-print("\n🔥 XGBOOST MODEL RESULTS")
-print("MAE:", mae)
-print("R2:", r2)
+# -----------------------------
+# CREATE MODELS FOLDER
+# -----------------------------
+os.makedirs("models", exist_ok=True)
 
-joblib.dump(model, MODEL_PATH)
+# -----------------------------
+# SAVE MODEL
+# -----------------------------
+package = {
+    "model": model,
+    "scaler": scaler,
+    "features": features
+}
 
-print("\n✅ Model saved:", MODEL_PATH)
+MODEL_PATH = "models/aqi_model.pkl"
+
+joblib.dump(package, MODEL_PATH)
+
+print(f"\nModel saved successfully at: {MODEL_PATH}")

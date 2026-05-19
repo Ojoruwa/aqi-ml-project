@@ -1,21 +1,33 @@
-import os
 import joblib
-import numpy as np
+import pandas as pd
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "aqi_model.pkl")
+# -----------------------------
+# LOAD MODEL
+# -----------------------------
+MODEL_PATH = "models/aqi_model.pkl"
 
-model = joblib.load(MODEL_PATH)
+package = joblib.load(MODEL_PATH)
 
-def predict_aqi(data):
-    features = np.array([[
-        data["temp"],
-        data["humidity"],
-        data["wind"],
-        data["pressure"],
-        data["pm2_5"],
-        data["pm10"],
-        data["no2"]
-    ]])
+model = package["model"]
+scaler = package["scaler"]
+features = package["features"]
 
-    return float(model.predict(features)[0])
+# -----------------------------
+# PREDICTION FUNCTION
+# -----------------------------
+def predict_aqi(data_dict):
+
+    input_df = pd.DataFrame([data_dict])
+
+    input_df = input_df[features]
+
+    scaled_input = scaler.transform(input_df)
+
+    prediction = model.predict(scaled_input)[0]
+
+    probabilities = model.predict_proba(scaled_input)[0]
+
+    return {
+        "prediction": int(prediction),
+        "probabilities": probabilities.tolist()
+    }
